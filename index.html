@@ -75,7 +75,7 @@
                                 <tr>
                                     <th class="px-6 py-4 font-semibold text-gray-700">问题</th>
                                     <th v-for="agent in agents" :key="agent" class="px-6 py-4 font-semibold text-gray-700 text-center">
-                                        {{ agent }}
+                                        {{ formatAgentName(agent) }}
                                     </th>
                                 </tr>
                             </thead>
@@ -126,7 +126,7 @@
                                 <tr>
                                     <th class="px-6 py-4 font-semibold text-gray-700">维度 / 评价标准</th>
                                     <th v-for="agent in agents" :key="agent" class="px-6 py-4 font-semibold text-gray-700 text-center">
-                                        {{ agent }}
+                                        {{ formatAgentName(agent) }}
                                     </th>
                                 </tr>
                             </thead>
@@ -214,6 +214,13 @@
                 const selectedQuestion = ref('');
                 const selectedCriterion = ref('');
                 let radarChart = null;
+
+                const agentNameMap = {
+                    'YXT': '易小淘',
+                    'ZX': '智讯'
+                };
+
+                const formatAgentName = (name) => agentNameMap[name] || name;
 
                 const agents = computed(() => {
                     const uniqueAgents = [...new Set(csvData.value.map(item => item.agent_source))];
@@ -344,7 +351,7 @@
                         const color = colors[index % colors.length];
                         
                         return {
-                            label: agent,
+                            label: formatAgentName(agent),
                             data: labels.map(dim => dimensionSummary.value[dim]?.[agent]?.avgScore || 0),
                             fill: true,
                             backgroundColor: color.bg,
@@ -410,7 +417,8 @@
                     questionsSummary, questionDimensions, selectedQuestion,
                     selectedCriterion, getCriteriaForDimension, getCriterionScore,
                     getAgentResponse, getAgentAnalysis, getScoreClass,
-                    getCriterionScoreClass, showQuestionDetail, showResponseComparison
+                    getCriterionScoreClass, showQuestionDetail, showResponseComparison,
+                    formatAgentName
                 };
             }
         }).mount('#app');
