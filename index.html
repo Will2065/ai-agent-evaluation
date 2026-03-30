@@ -130,28 +130,34 @@
                                     </th>
                                 </tr>
                             </thead>
-                            <tbody class="divide-y divide-gray-100">
-                                <template v-for="dimension in questionDimensions" :key="dimension">
-                                    <tr class="bg-gray-50/50">
-                                        <td :colspan="agents.length + 1" class="px-6 py-2 font-bold text-blue-800 text-sm">
-                                            {{ dimension }}
-                                        </td>
-                                    </tr>
-                                    <tr v-for="criterion in getCriteriaForDimension(dimension)" :key="criterion"
-                                        class="hover:bg-gray-50 cursor-pointer"
-                                        @click="showResponseComparison(criterion)">
-                                        <td class="px-8 py-4 text-gray-700 text-sm border-l-2 border-transparent hover:border-blue-300">
-                                            {{ criterion }}
-                                        </td>
-                                        <td v-for="agent in agents" :key="agent" class="px-6 py-4 text-center">
-                                            <div :class="getCriterionScoreClass(getCriterionScore(agent, dimension, criterion))" 
-                                                 class="inline-block px-3 py-1 rounded-full text-xs font-bold min-w-[3rem]">
-                                                {{ getCriterionScore(agent, dimension, criterion) }}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                </template>
-                            </tbody>
+                                    <tbody class="divide-y divide-gray-100">
+                                        <template v-for="dimension in questionDimensions" :key="dimension">
+                                            <tr class="bg-gray-50/50">
+                                                <td :colspan="agents.length + 1" class="px-6 py-2 font-bold text-blue-800 text-sm">
+                                                    {{ dimension }}
+                                                </td>
+                                            </tr>
+                                            <tr v-for="criterion in getCriteriaForDimension(dimension)" :key="criterion"
+                                                class="hover:bg-gray-50 cursor-pointer"
+                                                @click="showResponseComparison(dimension, criterion)">
+                                                <td class="px-8 py-4 text-gray-700 text-sm border-l-2 border-transparent hover:border-blue-300">
+                                                    {{ criterion }}
+                                                </td>
+                                                <td v-for="agent in agents" :key="agent" class="px-6 py-4 text-center">
+                                                    <div class="flex flex-col items-center">
+                                                        <div :class="getCriterionScoreClass(getCriterionScore(agent, dimension, criterion))" 
+                                                             class="inline-block px-3 py-1 rounded-full text-xs font-bold min-w-[3rem] mb-1">
+                                                            {{ getCriterionScore(agent, dimension, criterion) }}
+                                                        </div>
+                                                        <div class="text-[10px] text-gray-400 line-clamp-2 max-w-[150px] leading-tight text-center" 
+                                                             :title="getAgentAnalysis(agent, dimension, criterion)">
+                                                            {{ getAgentAnalysis(agent, dimension, criterion) }}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
                         </table>
                     </div>
                 </div>
@@ -182,9 +188,9 @@
                              :class="agent === agents[0] ? 'border-indigo-500' : 'border-emerald-500'">
                             <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/30">
                                 <h3 class="text-xl font-bold text-gray-800">{{ agent }} 的回答</h3>
-                                <div :class="getCriterionScoreClass(getCriterionScore(agent, null, selectedCriterion))" 
+                                <div :class="getCriterionScoreClass(getCriterionScore(agent, selectedDimension, selectedCriterion))" 
                                      class="px-4 py-1 rounded-full text-sm font-bold">
-                                    得分: {{ getCriterionScore(agent, null, selectedCriterion) }}
+                                    得分: {{ getCriterionScore(agent, selectedDimension, selectedCriterion) }}
                                 </div>
                             </div>
                             <div class="p-6">
@@ -193,7 +199,7 @@
                                 </div>
                                 <div class="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-100">
                                     <h4 class="text-sm font-bold text-gray-600 mb-2 uppercase tracking-wide">评估分析</h4>
-                                    <p class="text-gray-700 italic">{{ getAgentAnalysis(agent) }}</p>
+                                    <p class="text-gray-700 italic">{{ getAgentAnalysis(agent, selectedDimension, selectedCriterion) }}</p>
                                 </div>
                             </div>
                         </div>
@@ -212,6 +218,7 @@
                 const csvData = ref([]);
                 const currentView = ref('home');
                 const selectedQuestion = ref('');
+                const selectedDimension = ref('');
                 const selectedCriterion = ref('');
                 let radarChart = null;
 
@@ -286,12 +293,51 @@
                 };
 
                 const getCriterionScore = (agent, dimension, criterion) => {
-                    const item = csvData.value.find(i => 
-                        i.question === selectedQuestion.value && 
-                        i.agent_source === agent && 
-                        i.criterion === criterion
+                    const dim = dimension || selectedDimension.value;
+                    const crit = criterion || selectedCriterion.value;
+                    
+                    const item = csvData.value.find(i => {
+                        const qMatch = i.question.trim() === selectedQuestion.value.trim();
+                        const aMatch = i.agent_source.trim() === agent.trim();
+                        
+                        // 维度匹配：容错处理
+                        const cleanIDim = i.dimension.trim().replace(/[;；]$/, '');
+                        const cleanDim = dim ? dim.trim().replace(/[;；]$/, '') : '';
+                        const dMatch = dim ? cleanIDim === cleanDim : true;
+                        
+                        // 指标匹配：容错处理
+                        const cleanICrit = i.criterion.trim().replace(/[;；]$/, '');
+                        const cleanCrit = crit.trim().replace(/[;；]$/, '');
+                        const cMatch = cleanICrit === cleanCrit;
+                        
+                        return qMatch && aMatch && dMatch && cMatch;
+                    });
+                    
+                    if (!item) return 0;
+                    
+                    // 极致容错读取 score：
+                    // 1. 寻找键名包含 'score' 的字段 (不区分大小写，去除引号)
+                    const scoreKey = Object.keys(item).find(k => 
+                        k.toLowerCase().replace(/["']/g, '').trim().includes('score')
                     );
-                    return item ? parseFloat(item.score) : 0;
+                    
+                    let val = 0;
+                    if (scoreKey) {
+                        val = item[scoreKey];
+                    } else {
+                        // 2. 如果没找到键名，尝试按位置找（score 通常在 created_at 之前，倒数第三列左右）
+                        // 但由于是对象，位置不固定。我们找对象中所有值为数字或数字字符串且在 0-2 之间的
+                        const possibleScores = Object.values(item).filter(v => {
+                            const n = parseFloat(v);
+                            return !isNaN(n) && (n === 0 || n === 1 || n === 2 || n === 2.0 || n === 1.0 || n === 0.0);
+                        });
+                        if (possibleScores.length > 0) {
+                            val = possibleScores[possibleScores.length - 1]; // 取最后一个符合条件的数字
+                        }
+                    }
+                    
+                    const scoreNum = parseFloat(val);
+                    return isNaN(scoreNum) ? 0 : scoreNum;
                 };
 
                 const getAgentResponse = (agent) => {
@@ -302,13 +348,22 @@
                     return item ? item.response : '';
                 };
 
-                const getAgentAnalysis = (agent) => {
-                    const item = csvData.value.find(i => 
-                        i.question === selectedQuestion.value && 
-                        i.agent_source === agent &&
-                        i.criterion === selectedCriterion.value
-                    );
-                    return item ? item.analysis : '';
+                const getAgentAnalysis = (agent, dimension, criterion) => {
+                    const dim = dimension || selectedDimension.value;
+                    const crit = criterion || selectedCriterion.value;
+                    const item = csvData.value.find(i => {
+                        const qMatch = i.question.trim() === selectedQuestion.value.trim();
+                        const aMatch = i.agent_source.trim() === agent.trim();
+                        const dMatch = dim ? i.dimension.trim() === dim.trim() : true;
+                        
+                        // Fuzzy criterion match
+                        const cleanI = i.criterion.trim().replace(/[;；]$/, '');
+                        const cleanC = crit.trim().replace(/[;；]$/, '');
+                        const cMatch = cleanI === cleanC;
+                        
+                        return qMatch && aMatch && dMatch && cMatch;
+                    });
+                    return item ? item.analysis : '暂无分析数据';
                 };
 
                 const getScoreClass = (score) => {
@@ -329,7 +384,8 @@
                     window.scrollTo(0, 0);
                 };
 
-                const showResponseComparison = (criterion) => {
+                const showResponseComparison = (dimension, criterion) => {
+                    selectedDimension.value = dimension;
                     selectedCriterion.value = criterion;
                     currentView.value = 'response_comparison';
                     window.scrollTo(0, 0);
@@ -390,9 +446,21 @@
                         Papa.parse(csvText, {
                             header: true,
                             skipEmptyLines: true,
+                            dynamicTyping: true, // 自动转换数字类型
                             complete: (results) => {
-                                csvData.value = results.data;
-                                loading.ref = false;
+                                // 深度清洗：处理字段名和内容
+                                csvData.value = results.data.filter(row => row.question).map(row => {
+                                    const cleanedRow = {};
+                                    for (let key in row) {
+                                        const cleanKey = key.trim().replace(/^"|"$/g, '');
+                                        let value = row[key];
+                                        if (typeof value === 'string') {
+                                            value = value.trim().replace(/^"|"$/g, '');
+                                        }
+                                        cleanedRow[cleanKey] = value;
+                                    }
+                                    return cleanedRow;
+                                });
                                 loading.value = false;
                                 nextTick(() => {
                                     initRadarChart();
@@ -415,7 +483,7 @@
                 return {
                     loading, csvData, currentView, agents, dimensions,
                     questionsSummary, questionDimensions, selectedQuestion,
-                    selectedCriterion, getCriteriaForDimension, getCriterionScore,
+                    selectedDimension, selectedCriterion, getCriteriaForDimension, getCriterionScore,
                     getAgentResponse, getAgentAnalysis, getScoreClass,
                     getCriterionScoreClass, showQuestionDetail, showResponseComparison,
                     formatAgentName
