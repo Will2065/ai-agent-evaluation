@@ -34,7 +34,24 @@
             <span class="ml-4 text-gray-600">正在加载评估数据...</span>
         </div>
 
-        <div v-else>
+        <!-- Error State -->
+        <div v-if="error" class="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <p class="text-sm text-red-700">{{ error }}</p>
+                    <button @click="loadCsv(selectedCsv)" class="mt-2 text-sm font-medium text-red-700 hover:text-red-600 underline">
+                        重试
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div v-else-if="!loading">
             <!-- Navigation Breadcrumbs -->
             <nav class="mb-6 flex items-center space-x-2 text-sm text-gray-500">
                 <a href="#" @click.prevent="currentView = 'home'" class="hover:text-blue-600">首页</a>
@@ -50,14 +67,74 @@
 
             <!-- Home View -->
             <div v-if="currentView === 'home'">
-                <header class="mb-8 text-center">
-                    <h1 class="text-3xl font-bold text-gray-800">AI 智能体评估报告</h1>
-                    <p class="text-gray-600 mt-2">基于 {{ csvData.length }} 条评估指标的综合分析</p>
+                <header class="mb-12 text-center">
+                    <h1 class="text-4xl font-extrabold text-gray-900 tracking-tight">AI 智能体评估报告</h1>
+                    <p class="text-lg text-gray-500 mt-3">深度对比不同版本智能体的回答表现与评分分析</p>
                 </header>
 
+                <!-- Version Selection List -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-12">
+                    <div class="px-6 py-4 border-b border-gray-50 bg-gray-50/30 flex justify-between items-center">
+                        <h2 class="text-lg font-bold text-gray-800">评估版本列表</h2>
+                        <span class="text-xs font-medium text-gray-400 uppercase tracking-widest">选择版本以加载数据</span>
+                    </div>
+                    <div class="divide-y divide-gray-50">
+                        <div v-for="file in csvFiles" :key="file.path" 
+                             @click="loadCsv(file)"
+                             :class="selectedCsv?.path === file.path ? 'bg-blue-50/50 border-l-4 border-blue-500' : 'hover:bg-gray-50 cursor-pointer border-l-4 border-transparent'"
+                             class="px-6 py-5 transition-all group">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-4">
+                                    <div :class="selectedCsv?.path === file.path ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400 group-hover:bg-gray-200'"
+                                         class="w-10 h-10 rounded-full flex items-center justify-center transition-colors">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div class="flex items-center space-x-2">
+                                            <h3 class="font-bold text-gray-900">{{ file.name }}</h3>
+                                            <span v-if="file.isLatest" class="px-2 py-0.5 bg-red-100 text-red-600 text-[10px] rounded-full font-black uppercase tracking-tighter">
+                                                最新版本
+                                            </span>
+                                        </div>
+                                        <p class="text-sm text-gray-500 mt-1 flex items-center">
+                                            <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            测试时间: {{ file.testTime }}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center space-x-6">
+                                    <div class="text-right hidden sm:block">
+                                        <span :class="file.status === '已完成' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'"
+                                              class="px-3 py-1 rounded-full text-xs font-bold">
+                                            {{ file.status }}
+                                        </span>
+                                    </div>
+                                    <div v-if="selectedCsv?.path === file.path" class="text-blue-500">
+                                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Radar Chart Section -->
-                <div class="bg-white rounded-xl shadow-md p-6 mb-8">
-                    <h2 class="text-xl font-semibold mb-4 text-center">各维度平均得分对比 (雷达图)</h2>
+                <div class="bg-white rounded-xl shadow-md p-8 mb-12">
+                    <div class="flex items-center justify-between mb-8">
+                        <h2 class="text-2xl font-bold text-gray-800">各维度平均得分对比</h2>
+                        <div class="flex items-center space-x-2 text-sm text-gray-500">
+                            <span class="w-3 h-3 bg-indigo-500 rounded-full"></span>
+                            <span>易小淘</span>
+                            <span class="w-3 h-3 bg-emerald-500 rounded-full ml-4"></span>
+                            <span>智讯</span>
+                        </div>
+                    </div>
                     <div class="radar-chart-container">
                         <canvas id="radarChart"></canvas>
                     </div>
@@ -222,6 +299,26 @@
                 const selectedCriterion = ref('');
                 let radarChart = null;
 
+                // Available CSV files with metadata
+                const csvFiles = ref([
+                    { 
+                        name: '202603310925', 
+                        testTime: '2026-03-31 09:25', 
+                        status: '已完成', 
+                        path: 'results/information_qa_evaluation_results_detail_202603310925.csv', 
+                        isLatest: true 
+                    },
+                    { 
+                        name: 'Base Version', 
+                        testTime: '2026-03-27 10:03', 
+                        status: '已存档', 
+                        path: 'results/information_qa_evaluation_results_detail.csv', 
+                        isLatest: false 
+                    }
+                ]);
+                const selectedCsv = ref(csvFiles.value[0]);
+                const error = ref(null);
+
                 const agentNameMap = {
                     'YXT': '易小淘',
                     'ZX': '智讯'
@@ -229,27 +326,50 @@
 
                 const formatAgentName = (name) => agentNameMap[name] || name;
 
+                // Helper to get value from row regardless of case or quotes
+                // Prioritizes exact matches to avoid picking up 'question_no' for 'question'
+                const getRowVal = (row, keyPart) => {
+                    const keys = Object.keys(row);
+                    const lowerKeyPart = keyPart.toLowerCase();
+                    
+                    // 1. Try exact match first
+                    const exactKey = keys.find(k => k.toLowerCase() === lowerKeyPart);
+                    if (exactKey) return row[exactKey];
+                    
+                    // 2. If no exact match, try partial match (but prefer the one that IS the keyPart if it's a substring)
+                    // For example, if we have 'question' and 'question_no', and we search for 'question',
+                    // the exact match above would have found 'question'.
+                    const partialKey = keys.find(k => k.toLowerCase().includes(lowerKeyPart));
+                    return partialKey ? row[partialKey] : '';
+                };
+
                 const agents = computed(() => {
-                    const uniqueAgents = [...new Set(csvData.value.map(item => item.agent_source))];
-                    return uniqueAgents.sort();
+                    const uniqueAgents = [...new Set(csvData.value.map(item => getRowVal(item, 'agent_source')))];
+                    return uniqueAgents.filter(a => a).sort();
                 });
 
                 const dimensions = computed(() => {
-                    return [...new Set(csvData.value.map(item => item.dimension))];
+                    return [...new Set(csvData.value.map(item => getRowVal(item, 'dimension')))].filter(d => d);
                 });
 
                 // Home view: Average score per question per agent
                 const questionsSummary = computed(() => {
                     const summary = {};
                     csvData.value.forEach(item => {
-                        if (!summary[item.question]) {
-                            summary[item.question] = {};
+                        const question = getRowVal(item, 'question');
+                        const agent = getRowVal(item, 'agent_source');
+                        const score = parseFloat(getRowVal(item, 'score')) || 0;
+                        
+                        if (!question || !agent) return;
+
+                        if (!summary[question]) {
+                            summary[question] = {};
                         }
-                        if (!summary[item.question][item.agent_source]) {
-                            summary[item.question][item.agent_source] = { totalScore: 0, count: 0 };
+                        if (!summary[question][agent]) {
+                            summary[question][agent] = { totalScore: 0, count: 0 };
                         }
-                        summary[item.question][item.agent_source].totalScore += parseFloat(item.score);
-                        summary[item.question][item.agent_source].count += 1;
+                        summary[question][agent].totalScore += score;
+                        summary[question][agent].count += 1;
                     });
 
                     Object.keys(summary).forEach(q => {
@@ -264,14 +384,20 @@
                 const dimensionSummary = computed(() => {
                     const summary = {};
                     csvData.value.forEach(item => {
-                        if (!summary[item.dimension]) {
-                            summary[item.dimension] = {};
+                        const dimension = getRowVal(item, 'dimension');
+                        const agent = getRowVal(item, 'agent_source');
+                        const score = parseFloat(getRowVal(item, 'score')) || 0;
+
+                        if (!dimension || !agent) return;
+
+                        if (!summary[dimension]) {
+                            summary[dimension] = {};
                         }
-                        if (!summary[item.dimension][item.agent_source]) {
-                            summary[item.dimension][item.agent_source] = { totalScore: 0, count: 0 };
+                        if (!summary[dimension][agent]) {
+                            summary[dimension][agent] = { totalScore: 0, count: 0 };
                         }
-                        summary[item.dimension][item.agent_source].totalScore += parseFloat(item.score);
-                        summary[item.dimension][item.agent_source].count += 1;
+                        summary[dimension][agent].totalScore += score;
+                        summary[dimension][agent].count += 1;
                     });
 
                     Object.keys(summary).forEach(d => {
@@ -283,13 +409,16 @@
                 });
 
                 const questionDimensions = computed(() => {
-                    const qData = csvData.value.filter(item => item.question === selectedQuestion.value);
-                    return [...new Set(qData.map(item => item.dimension))];
+                    const qData = csvData.value.filter(item => getRowVal(item, 'question') === selectedQuestion.value);
+                    return [...new Set(qData.map(item => getRowVal(item, 'dimension')))].filter(d => d);
                 });
 
                 const getCriteriaForDimension = (dim) => {
-                    const qData = csvData.value.filter(item => item.question === selectedQuestion.value && item.dimension === dim);
-                    return [...new Set(qData.map(item => item.criterion))];
+                    const qData = csvData.value.filter(item => 
+                        getRowVal(item, 'question') === selectedQuestion.value && 
+                        getRowVal(item, 'dimension') === dim
+                    );
+                    return [...new Set(qData.map(item => getRowVal(item, 'criterion')))].filter(c => c);
                 };
 
                 const getCriterionScore = (agent, dimension, criterion) => {
@@ -297,16 +426,14 @@
                     const crit = criterion || selectedCriterion.value;
                     
                     const item = csvData.value.find(i => {
-                        const qMatch = i.question.trim() === selectedQuestion.value.trim();
-                        const aMatch = i.agent_source.trim() === agent.trim();
+                        const qMatch = getRowVal(i, 'question').trim() === selectedQuestion.value.trim();
+                        const aMatch = getRowVal(i, 'agent_source').trim() === agent.trim();
                         
-                        // 维度匹配：容错处理
-                        const cleanIDim = i.dimension.trim().replace(/[;；]$/, '');
+                        const cleanIDim = getRowVal(i, 'dimension').trim().replace(/[;；]$/, '');
                         const cleanDim = dim ? dim.trim().replace(/[;；]$/, '') : '';
                         const dMatch = dim ? cleanIDim === cleanDim : true;
                         
-                        // 指标匹配：容错处理
-                        const cleanICrit = i.criterion.trim().replace(/[;；]$/, '');
+                        const cleanICrit = getRowVal(i, 'criterion').trim().replace(/[;；]$/, '');
                         const cleanCrit = crit.trim().replace(/[;；]$/, '');
                         const cMatch = cleanICrit === cleanCrit;
                         
@@ -314,56 +441,35 @@
                     });
                     
                     if (!item) return 0;
-                    
-                    // 极致容错读取 score：
-                    // 1. 寻找键名包含 'score' 的字段 (不区分大小写，去除引号)
-                    const scoreKey = Object.keys(item).find(k => 
-                        k.toLowerCase().replace(/["']/g, '').trim().includes('score')
-                    );
-                    
-                    let val = 0;
-                    if (scoreKey) {
-                        val = item[scoreKey];
-                    } else {
-                        // 2. 如果没找到键名，尝试按位置找（score 通常在 created_at 之前，倒数第三列左右）
-                        // 但由于是对象，位置不固定。我们找对象中所有值为数字或数字字符串且在 0-2 之间的
-                        const possibleScores = Object.values(item).filter(v => {
-                            const n = parseFloat(v);
-                            return !isNaN(n) && (n === 0 || n === 1 || n === 2 || n === 2.0 || n === 1.0 || n === 0.0);
-                        });
-                        if (possibleScores.length > 0) {
-                            val = possibleScores[possibleScores.length - 1]; // 取最后一个符合条件的数字
-                        }
-                    }
-                    
-                    const scoreNum = parseFloat(val);
-                    return isNaN(scoreNum) ? 0 : scoreNum;
+                    return parseFloat(getRowVal(item, 'score')) || 0;
                 };
 
                 const getAgentResponse = (agent) => {
                     const item = csvData.value.find(i => 
-                        i.question === selectedQuestion.value && 
-                        i.agent_source === agent
+                        getRowVal(i, 'question') === selectedQuestion.value && 
+                        getRowVal(i, 'agent_source') === agent
                     );
-                    return item ? item.response : '';
+                    return item ? getRowVal(item, 'response') : '';
                 };
 
                 const getAgentAnalysis = (agent, dimension, criterion) => {
                     const dim = dimension || selectedDimension.value;
                     const crit = criterion || selectedCriterion.value;
                     const item = csvData.value.find(i => {
-                        const qMatch = i.question.trim() === selectedQuestion.value.trim();
-                        const aMatch = i.agent_source.trim() === agent.trim();
-                        const dMatch = dim ? i.dimension.trim() === dim.trim() : true;
+                        const qMatch = getRowVal(i, 'question').trim() === selectedQuestion.value.trim();
+                        const aMatch = getRowVal(i, 'agent_source').trim() === agent.trim();
                         
-                        // Fuzzy criterion match
-                        const cleanI = i.criterion.trim().replace(/[;；]$/, '');
-                        const cleanC = crit.trim().replace(/[;；]$/, '');
-                        const cMatch = cleanI === cleanC;
+                        const cleanIDim = getRowVal(i, 'dimension').trim().replace(/[;；]$/, '');
+                        const cleanDim = dim ? dim.trim().replace(/[;；]$/, '') : '';
+                        const dMatch = dim ? cleanIDim === cleanDim : true;
+                        
+                        const cleanICrit = getRowVal(i, 'criterion').trim().replace(/[;；]$/, '');
+                        const cleanCrit = crit.trim().replace(/[;；]$/, '');
+                        const cMatch = cleanICrit === cleanCrit;
                         
                         return qMatch && aMatch && dMatch && cMatch;
                     });
-                    return item ? item.analysis : '暂无分析数据';
+                    return item ? getRowVal(item, 'analysis') : '暂无分析数据';
                 };
 
                 const getScoreClass = (score) => {
@@ -436,41 +542,66 @@
                     });
                 };
 
-                onMounted(async () => {
+                const loadCsv = async (file) => {
+                    loading.value = true;
+                    error.value = null;
+                    selectedCsv.value = file;
                     try {
-                        // Fetch CSV file
-                        const response = await fetch('results/information_qa_evaluation_results_detail.csv');
+                        const response = await fetch(file.path);
+                        if (!response.ok) throw new Error(`无法获取文件: ${response.statusText}`);
                         const csvText = await response.text();
                         
-                        // Parse CSV
                         Papa.parse(csvText, {
                             header: true,
                             skipEmptyLines: true,
-                            dynamicTyping: true, // 自动转换数字类型
+                            dynamicTyping: false,
                             complete: (results) => {
-                                // 深度清洗：处理字段名和内容
-                                csvData.value = results.data.filter(row => row.question).map(row => {
-                                    const cleanedRow = {};
-                                    for (let key in row) {
-                                        const cleanKey = key.trim().replace(/^"|"$/g, '');
-                                        let value = row[key];
-                                        if (typeof value === 'string') {
-                                            value = value.trim().replace(/^"|"$/g, '');
+                                try {
+                                    const cleanedData = results.data.map(row => {
+                                        const cleanedRow = {};
+                                        for (let key in row) {
+                                            const cleanKey = key.replace(/[^\x20-\x7E\u4E00-\u9FA5]/g, '').trim().replace(/^[\"']|[\"']$/g, '');
+                                            cleanedRow[cleanKey] = row[key];
                                         }
-                                        cleanedRow[cleanKey] = value;
-                                    }
-                                    return cleanedRow;
-                                });
-                                loading.value = false;
-                                nextTick(() => {
-                                    initRadarChart();
-                                });
+                                        return cleanedRow;
+                                    });
+
+                                    csvData.value = cleanedData.filter(row => {
+                                        const keys = Object.keys(row);
+                                        const qKey = keys.find(k => k.toLowerCase().includes('question'));
+                                        return row[qKey] && row[qKey].toString().trim().length > 0;
+                                    }).map(row => {
+                                        const finalRow = {};
+                                        for (let key in row) {
+                                            let val = row[key];
+                                            if (val !== null && val !== undefined) {
+                                                val = val.toString().trim().replace(/^[\"']|[\"']$/g, '');
+                                            }
+                                            const stdKey = key.toLowerCase();
+                                            finalRow[stdKey] = val;
+                                            finalRow[key] = val; 
+                                        }
+                                        return finalRow;
+                                    });
+
+                                    loading.value = false;
+                                    nextTick(() => {
+                                        initRadarChart();
+                                    });
+                                } catch (e) {
+                                    error.value = `解析失败: ${e.message}`;
+                                    loading.value = false;
+                                }
                             }
                         });
-                    } catch (error) {
-                        console.error('Error loading CSV:', error);
+                    } catch (e) {
+                        error.value = `加载失败: ${e.message}`;
                         loading.value = false;
                     }
+                };
+
+                onMounted(() => {
+                    loadCsv(selectedCsv.value);
                 });
 
                 // Watch currentView to re-init chart if returning to home
@@ -486,7 +617,7 @@
                     selectedDimension, selectedCriterion, getCriteriaForDimension, getCriterionScore,
                     getAgentResponse, getAgentAnalysis, getScoreClass,
                     getCriterionScoreClass, showQuestionDetail, showResponseComparison,
-                    formatAgentName
+                    formatAgentName, csvFiles, selectedCsv, loadCsv, error
                 };
             }
         }).mount('#app');
