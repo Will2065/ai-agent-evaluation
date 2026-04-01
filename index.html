@@ -4,14 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI 智能体评估对比</title>
+    <!-- 使用更加稳定的国内镜像 CDN (Staticfile / 360) -->
     <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Vue.js -->
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link href="https://cdn.staticfile.org/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <!-- Vue.js 3 -->
+    <script src="https://cdn.staticfile.org/vue/3.2.47/vue.global.min.js"></script>
     <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.staticfile.org/Chart.js/3.9.1/chart.min.js"></script>
     <!-- PapaParse -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdn.staticfile.org/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         .radar-chart-container {
             max-width: 600px;
@@ -128,12 +129,6 @@
                 <div class="bg-white rounded-xl shadow-md p-8 mb-12">
                     <div class="flex items-center justify-between mb-8">
                         <h2 class="text-2xl font-bold text-gray-800">各维度平均得分对比</h2>
-                        <div class="flex items-center space-x-2 text-sm text-gray-500">
-                            <span class="w-3 h-3 bg-indigo-500 rounded-full"></span>
-                            <span>易小淘</span>
-                            <span class="w-3 h-3 bg-emerald-500 rounded-full ml-4"></span>
-                            <span>智讯</span>
-                        </div>
                     </div>
                     <div class="radar-chart-container">
                         <canvas id="radarChart"></canvas>
@@ -302,11 +297,18 @@
                 // Available CSV files with metadata
                 const csvFiles = ref([
                     { 
+                        name: '智讯 vs 天玑智融 (260331)', 
+                        testTime: '2026-03-31 13:34', 
+                        status: '已完成', 
+                        path: 'results/智讯vs天玑智融260331.csv', 
+                        isLatest: true 
+                    },
+                    { 
                         name: '202603310925', 
                         testTime: '2026-03-31 09:25', 
                         status: '已完成', 
                         path: 'results/information_qa_evaluation_results_detail_202603310925.csv', 
-                        isLatest: true 
+                        isLatest: false 
                     },
                     { 
                         name: 'Base Version', 
@@ -321,91 +323,140 @@
 
                 const agentNameMap = {
                     'YXT': '易小淘',
-                    'ZX': '智讯'
+                    'ZX': '智讯',
+                    'tjzr': '天玑智融'
                 };
 
                 const formatAgentName = (name) => agentNameMap[name] || name;
 
+                // Normalize string for comparison: remove all whitespace and punctuation
+                const normalize = (str, isCriterion = false) => {
+                    if (!str) return '';
+                    let res = str.toString().toLowerCase()
+                        .replace(/[\s\r\n\t]/g, '')
+                        .replace(/[.,;:"'!?，。；：！？“”‘’（）()]/g, '');
+                    
+                    // 如果是 criterion 匹配，只取前 10 个字符
+                    if (isCriterion) {
+                        return res.substring(0, 10);
+                    }
+                    return res;
+                };
+
                 // Helper to get value from row regardless of case or quotes
-                // Prioritizes exact matches to avoid picking up 'question_no' for 'question'
                 const getRowVal = (row, keyPart) => {
                     const keys = Object.keys(row);
                     const lowerKeyPart = keyPart.toLowerCase();
                     
                     // 1. Try exact match first
                     const exactKey = keys.find(k => k.toLowerCase() === lowerKeyPart);
-                    if (exactKey) return row[exactKey];
+                    if (exactKey) return row[exactKey] || '';
                     
-                    // 2. If no exact match, try partial match (but prefer the one that IS the keyPart if it's a substring)
-                    // For example, if we have 'question' and 'question_no', and we search for 'question',
-                    // the exact match above would have found 'question'.
+                    // 2. If no exact match, try partial match
                     const partialKey = keys.find(k => k.toLowerCase().includes(lowerKeyPart));
-                    return partialKey ? row[partialKey] : '';
+                    return partialKey ? row[partialKey] || '' : '';
                 };
 
                 const agents = computed(() => {
-                    const uniqueAgents = [...new Set(csvData.value.map(item => getRowVal(item, 'agent_source')))];
-                    return uniqueAgents.filter(a => a).sort();
+                    const uniqueAgentsMap = {};
+                    csvData.value.forEach(item => {
+                        const raw = getRowVal(item, 'agent_source');
+                        if (!raw) return;
+                        const norm = normalize(raw);
+                        if (!uniqueAgentsMap[norm]) {
+                            uniqueAgentsMap[norm] = raw;
+                        }
+                    });
+                    return Object.values(uniqueAgentsMap).sort();
                 });
 
                 const dimensions = computed(() => {
-                    return [...new Set(csvData.value.map(item => getRowVal(item, 'dimension')))].filter(d => d);
+                    const uniqueDimsMap = {};
+                    csvData.value.forEach(item => {
+                        const raw = getRowVal(item, 'dimension');
+                        if (!raw) return;
+                        const norm = normalize(raw);
+                        if (!uniqueDimsMap[norm]) {
+                            uniqueDimsMap[norm] = raw;
+                        }
+                    });
+                    return Object.values(uniqueDimsMap).sort();
                 });
 
                 // Home view: Average score per question per agent
                 const questionsSummary = computed(() => {
                     const summary = {};
+                    const questionDisplayMap = {}; // Map normalized question to its original display string
+
                     csvData.value.forEach(item => {
-                        const question = getRowVal(item, 'question');
+                        const rawQuestion = getRowVal(item, 'question');
                         const agent = getRowVal(item, 'agent_source');
                         const score = parseFloat(getRowVal(item, 'score')) || 0;
                         
-                        if (!question || !agent) return;
+                        if (!rawQuestion || !agent) return;
 
-                        if (!summary[question]) {
-                            summary[question] = {};
+                        const normQuestion = normalize(rawQuestion);
+                        if (!questionDisplayMap[normQuestion]) {
+                            questionDisplayMap[normQuestion] = rawQuestion;
                         }
-                        if (!summary[question][agent]) {
-                            summary[question][agent] = { totalScore: 0, count: 0 };
+
+                        if (!summary[normQuestion]) {
+                            summary[normQuestion] = {};
                         }
-                        summary[question][agent].totalScore += score;
-                        summary[question][agent].count += 1;
+                        if (!summary[normQuestion][agent]) {
+                            summary[normQuestion][agent] = { totalScore: 0, count: 0 };
+                        }
+                        summary[normQuestion][agent].totalScore += score;
+                        summary[normQuestion][agent].count += 1;
                     });
 
-                    Object.keys(summary).forEach(q => {
-                        Object.keys(summary[q]).forEach(a => {
-                            summary[q][a].avgScore = summary[q][a].totalScore / summary[q][a].count;
+                    const finalSummary = {};
+                    Object.keys(summary).forEach(normQ => {
+                        const displayQ = questionDisplayMap[normQ];
+                        finalSummary[displayQ] = summary[normQ];
+                        Object.keys(finalSummary[displayQ]).forEach(a => {
+                            finalSummary[displayQ][a].avgScore = finalSummary[displayQ][a].totalScore / finalSummary[displayQ][a].count;
                         });
                     });
-                    return summary;
+                    return finalSummary;
                 });
 
                 // Radar chart data: Average score per dimension per agent
                 const dimensionSummary = computed(() => {
                     const summary = {};
+                    const dimensionDisplayMap = {};
+
                     csvData.value.forEach(item => {
-                        const dimension = getRowVal(item, 'dimension');
+                        const rawDimension = getRowVal(item, 'dimension');
                         const agent = getRowVal(item, 'agent_source');
                         const score = parseFloat(getRowVal(item, 'score')) || 0;
 
-                        if (!dimension || !agent) return;
+                        if (!rawDimension || !agent) return;
 
-                        if (!summary[dimension]) {
-                            summary[dimension] = {};
+                        const normDim = normalize(rawDimension);
+                        if (!dimensionDisplayMap[normDim]) {
+                            dimensionDisplayMap[normDim] = rawDimension;
                         }
-                        if (!summary[dimension][agent]) {
-                            summary[dimension][agent] = { totalScore: 0, count: 0 };
+
+                        if (!summary[normDim]) {
+                            summary[normDim] = {};
                         }
-                        summary[dimension][agent].totalScore += score;
-                        summary[dimension][agent].count += 1;
+                        if (!summary[normDim][agent]) {
+                            summary[normDim][agent] = { totalScore: 0, count: 0 };
+                        }
+                        summary[normDim][agent].totalScore += score;
+                        summary[normDim][agent].count += 1;
                     });
 
-                    Object.keys(summary).forEach(d => {
-                        Object.keys(summary[d]).forEach(a => {
-                            summary[d][a].avgScore = summary[d][a].totalScore / summary[d][a].count;
+                    const finalSummary = {};
+                    Object.keys(summary).forEach(normD => {
+                        const displayD = dimensionDisplayMap[normD];
+                        finalSummary[displayD] = summary[normD];
+                        Object.keys(finalSummary[displayD]).forEach(a => {
+                            finalSummary[displayD][a].avgScore = finalSummary[displayD][a].totalScore / finalSummary[displayD][a].count;
                         });
                     });
-                    return summary;
+                    return finalSummary;
                 });
 
                 const questionDimensions = computed(() => {
@@ -415,10 +466,21 @@
 
                 const getCriteriaForDimension = (dim) => {
                     const qData = csvData.value.filter(item => 
-                        getRowVal(item, 'question') === selectedQuestion.value && 
-                        getRowVal(item, 'dimension') === dim
+                        normalize(getRowVal(item, 'question')) === normalize(selectedQuestion.value) && 
+                        normalize(getRowVal(item, 'dimension')) === dim
                     );
-                    return [...new Set(qData.map(item => getRowVal(item, 'criterion')))].filter(c => c);
+                    
+                    // 使用前 10 个字符进行去重
+                    const criteriaMap = new Map();
+                    qData.forEach(item => {
+                        const rawCrit = getRowVal(item, 'criterion');
+                        if (!rawCrit) return;
+                        const normCrit = normalize(rawCrit, true);
+                        if (!criteriaMap.has(normCrit)) {
+                            criteriaMap.set(normCrit, rawCrit);
+                        }
+                    });
+                    return Array.from(criteriaMap.values());
                 };
 
                 const getCriterionScore = (agent, dimension, criterion) => {
@@ -426,16 +488,10 @@
                     const crit = criterion || selectedCriterion.value;
                     
                     const item = csvData.value.find(i => {
-                        const qMatch = getRowVal(i, 'question').trim() === selectedQuestion.value.trim();
-                        const aMatch = getRowVal(i, 'agent_source').trim() === agent.trim();
-                        
-                        const cleanIDim = getRowVal(i, 'dimension').trim().replace(/[;；]$/, '');
-                        const cleanDim = dim ? dim.trim().replace(/[;；]$/, '') : '';
-                        const dMatch = dim ? cleanIDim === cleanDim : true;
-                        
-                        const cleanICrit = getRowVal(i, 'criterion').trim().replace(/[;；]$/, '');
-                        const cleanCrit = crit.trim().replace(/[;；]$/, '');
-                        const cMatch = cleanICrit === cleanCrit;
+                        const qMatch = normalize(getRowVal(i, 'question')) === normalize(selectedQuestion.value);
+                        const aMatch = normalize(getRowVal(i, 'agent_source')) === normalize(agent);
+                        const dMatch = dim ? normalize(getRowVal(i, 'dimension')) === normalize(dim) : true;
+                        const cMatch = normalize(getRowVal(i, 'criterion'), true) === normalize(crit, true);
                         
                         return qMatch && aMatch && dMatch && cMatch;
                     });
@@ -446,8 +502,8 @@
 
                 const getAgentResponse = (agent) => {
                     const item = csvData.value.find(i => 
-                        getRowVal(i, 'question') === selectedQuestion.value && 
-                        getRowVal(i, 'agent_source') === agent
+                        normalize(getRowVal(i, 'question')) === normalize(selectedQuestion.value) && 
+                        normalize(getRowVal(i, 'agent_source')) === normalize(agent)
                     );
                     return item ? getRowVal(item, 'response') : '';
                 };
@@ -456,16 +512,10 @@
                     const dim = dimension || selectedDimension.value;
                     const crit = criterion || selectedCriterion.value;
                     const item = csvData.value.find(i => {
-                        const qMatch = getRowVal(i, 'question').trim() === selectedQuestion.value.trim();
-                        const aMatch = getRowVal(i, 'agent_source').trim() === agent.trim();
-                        
-                        const cleanIDim = getRowVal(i, 'dimension').trim().replace(/[;；]$/, '');
-                        const cleanDim = dim ? dim.trim().replace(/[;；]$/, '') : '';
-                        const dMatch = dim ? cleanIDim === cleanDim : true;
-                        
-                        const cleanICrit = getRowVal(i, 'criterion').trim().replace(/[;；]$/, '');
-                        const cleanCrit = crit.trim().replace(/[;；]$/, '');
-                        const cMatch = cleanICrit === cleanCrit;
+                        const qMatch = normalize(getRowVal(i, 'question')) === normalize(selectedQuestion.value);
+                        const aMatch = normalize(getRowVal(i, 'agent_source')) === normalize(agent);
+                        const dMatch = dim ? normalize(getRowVal(i, 'dimension')) === normalize(dim) : true;
+                        const cMatch = normalize(getRowVal(i, 'criterion'), true) === normalize(crit, true);
                         
                         return qMatch && aMatch && dMatch && cMatch;
                     });
@@ -543,58 +593,70 @@
                 };
 
                 const loadCsv = async (file) => {
+                    console.log('开始加载文件:', file.path);
                     loading.value = true;
                     error.value = null;
                     selectedCsv.value = file;
+                    
                     try {
                         const response = await fetch(file.path);
-                        if (!response.ok) throw new Error(`无法获取文件: ${response.statusText}`);
+                        if (!response.ok) {
+                            throw new Error(`网络响应错误: ${response.status} ${response.statusText}`);
+                        }
                         const csvText = await response.text();
+                        console.log('文件下载完成，准备解析...');
                         
                         Papa.parse(csvText, {
                             header: true,
-                            skipEmptyLines: true,
-                            dynamicTyping: false,
+                            skipEmptyLines: 'greedy',
                             complete: (results) => {
+                                console.log('CSV 解析完成，行数:', results.data.length);
                                 try {
+                                    // 1. 基础清洗
                                     const cleanedData = results.data.map(row => {
                                         const cleanedRow = {};
                                         for (let key in row) {
-                                            const cleanKey = key.replace(/[^\x20-\x7E\u4E00-\u9FA5]/g, '').trim().replace(/^[\"']|[\"']$/g, '');
+                                            const cleanKey = key.trim().replace(/^["']|["']$/g, '');
                                             cleanedRow[cleanKey] = row[key];
                                         }
                                         return cleanedRow;
                                     });
 
+                                    // 2. 深度处理
                                     csvData.value = cleanedData.filter(row => {
-                                        const keys = Object.keys(row);
-                                        const qKey = keys.find(k => k.toLowerCase().includes('question'));
-                                        return row[qKey] && row[qKey].toString().trim().length > 0;
+                                        const qVal = getRowVal(row, 'question');
+                                        return qVal && qVal.toString().trim().length > 0;
                                     }).map(row => {
                                         const finalRow = {};
                                         for (let key in row) {
                                             let val = row[key];
                                             if (val !== null && val !== undefined) {
-                                                val = val.toString().trim().replace(/^[\"']|[\"']$/g, '');
+                                                val = val.toString().trim().replace(/^["']|["']$/g, '');
                                             }
-                                            const stdKey = key.toLowerCase();
-                                            finalRow[stdKey] = val;
-                                            finalRow[key] = val; 
+                                            finalRow[key] = val;
                                         }
                                         return finalRow;
                                     });
 
+                                    console.log('数据处理完成，有效记录:', csvData.value.length);
                                     loading.value = false;
                                     nextTick(() => {
                                         initRadarChart();
                                     });
                                 } catch (e) {
-                                    error.value = `解析失败: ${e.message}`;
+                                    console.error('数据处理错误:', e);
+                                    error.value = `数据处理失败: ${e.message}`;
                                     loading.value = false;
                                 }
+                            },
+                            error: (err) => {
+                                console.error('PapaParse 错误:', err);
+                                error.value = `解析 CSV 失败: ${err.message}`;
+                                loading.value = false;
                             }
                         });
                     } catch (e) {
+                        console.error('加载过程错误:', e);
                         error.value = `加载失败: ${e.message}`;
                         loading.value = false;
                     }
