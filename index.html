@@ -297,11 +297,18 @@
                 // Available CSV files with metadata
                 const csvFiles = ref([
                     { 
+                        name: '测评结果 (202604151536)', 
+                        testTime: '2026-04-14 10:58', 
+                        status: '已完成', 
+                        path: 'results/202604151536.csv', 
+                        isLatest: true 
+                    },
+                    { 
                         name: '智讯 vs 天玑智融 (260331)', 
                         testTime: '2026-03-31 13:34', 
                         status: '已完成', 
                         path: 'results/智讯vs天玑智融260331.csv', 
-                        isLatest: true 
+                        isLatest: false 
                     },
                     { 
                         name: '202603310925', 
@@ -324,6 +331,7 @@
                 const agentNameMap = {
                     'YXT': '易小淘',
                     'ZX': '智讯',
+                    'zx': '智讯',
                     'tjzr': '天玑智融'
                 };
 
